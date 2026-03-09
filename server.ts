@@ -142,6 +142,15 @@ function parseValue(val: string): string | string[] {
     if (!inner) return [];
     return inner.split(",").map(s => s.trim().replace(/^['"]|['"]$/g, ""));
   }
+  // YAML multi-line list (value is empty, continuation lines are "  - item")
+  if (val === "" || val.includes("\n")) {
+    const items = val.split("\n")
+      .map(l => l.trim())
+      .filter(l => l.startsWith("- "))
+      .map(l => l.slice(2).trim().replace(/^['"]|['"]$/g, ""));
+    if (items.length > 0) return items;
+    if (val === "") return val; // empty value, not a list
+  }
   // Strip surrounding quotes
   if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
     return val.slice(1, -1);

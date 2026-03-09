@@ -111,6 +111,24 @@ Body`;
     expect(body).toBe(content);
   });
 
+  test("handles YAML multi-line list concepts", () => {
+    const content = `---
+session: ac09fb92
+date: 2026-02-18
+concepts:
+  - network-scale-metric-tree
+  - causal-ambiguity
+  - pencil-dev-redesign
+summary: Some summary here
+---
+
+Body`;
+
+    const { frontmatter } = parseFrontmatter(content);
+    expect(frontmatter.concepts).toEqual(["network-scale-metric-tree", "causal-ambiguity", "pencil-dev-redesign"]);
+    expect(frontmatter.summary).toBe("Some summary here");
+  });
+
   test("handles quoted values", () => {
     const content = `---
 session: aabbccdd

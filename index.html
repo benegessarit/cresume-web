@@ -321,7 +321,7 @@
       html += '</div>';
 
       // Concepts
-      if (data.concepts && data.concepts.length > 0) {
+      if (Array.isArray(data.concepts) && data.concepts.length > 0) {
         html += '<div class="preview-concepts">' +
           data.concepts.map(c => '<span class="concept-tag">' + escapeHtml(c) + '</span>').join("") +
           '</div>';
