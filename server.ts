@@ -8,6 +8,17 @@ const QMD_JS = resolve(HOME, ".bun/install/global/node_modules/qmd/dist/qmd.js")
 const VAULT_SESSIONS = resolve(HOME, "Documents/knowledge/Vault/Sessions");
 const CLAUDE_PROJECTS = resolve(HOME, ".claude/projects");
 
+function shellQuote(s: string): string {
+  return "'" + s.replace(/'/g, "'\\''") + "'";
+}
+
+function buildResumeCommand(projectPath: string | null, uuid: string): string {
+  if (projectPath) {
+    return `cd ${shellQuote(projectPath)} && claude --resume ${uuid}`;
+  }
+  return `claude --resume ${uuid}`;
+}
+
 // --- Ported from ~/bin/cresume ---
 
 export function extractShortId(qmdUri: string): string | null {
@@ -52,7 +63,7 @@ export async function resolveProjectPath(projectDir: string): Promise<string | n
 
   // 2. Decode dir name: -Users-<user>-X → ~/X
   const dirName = basename(projectDir);
-  const user = Bun.env.USER || "davidbeyer";
+  const user = Bun.env.USER || Bun.env.LOGNAME || basename(Bun.env.HOME || "/tmp/unknown");
   const prefix = `-Users-${user}-`;
   if (dirName.startsWith(prefix)) {
     const suffix = dirName.slice(prefix.length);
@@ -167,39 +178,50 @@ interface ConversationTurn {
 
 async function readConversationPreview(jsonlPath: string, maxLines = 300): Promise<{ turns: ConversationTurn[]; gitBranch?: string; totalLines: number }> {
   const file = Bun.file(jsonlPath);
-  const text = await file.text();
-  const lines = text.split("\n").filter(Boolean);
-  const totalLines = lines.length;
-  const previewLines = lines.slice(0, maxLines);
+  const stream = file.stream();
+  const decoder = new TextDecoder();
 
   const turns: ConversationTurn[] = [];
   let gitBranch: string | undefined;
+  let lineCount = 0;
+  let partial = "";
 
-  for (const line of previewLines) {
-    try {
-      const d = JSON.parse(line);
-      if (!gitBranch && d.gitBranch) gitBranch = d.gitBranch;
+  for await (const chunk of stream) {
+    partial += decoder.decode(chunk, { stream: true });
+    const segments = partial.split("\n");
+    partial = segments.pop() || "";
 
-      if (d.type === "user" || d.type === "assistant") {
-        const content = d.message?.content;
-        let text = "";
-        if (typeof content === "string") {
-          text = content;
-        } else if (Array.isArray(content)) {
-          text = content
-            .filter((b: any) => b.type === "text")
-            .map((b: any) => b.text || "")
-            .join("\n");
+    for (const line of segments) {
+      if (!line) continue;
+      lineCount++;
+      if (lineCount > maxLines) continue; // count but don't parse
+
+      try {
+        const d = JSON.parse(line);
+        if (!gitBranch && d.gitBranch) gitBranch = d.gitBranch;
+
+        if (d.type === "user" || d.type === "assistant") {
+          const content = d.message?.content;
+          let text = "";
+          if (typeof content === "string") {
+            text = content;
+          } else if (Array.isArray(content)) {
+            text = content
+              .filter((b: any) => b.type === "text")
+              .map((b: any) => b.text || "")
+              .join("\n");
+          }
+          if (text.trim()) {
+            turns.push({ role: d.type, text: text.slice(0, 2000) });
+          }
         }
-        if (text.trim()) {
-          // Truncate very long messages
-          turns.push({ role: d.type, text: text.slice(0, 2000) });
-        }
-      }
-    } catch { /* skip malformed lines */ }
+      } catch { /* skip malformed lines */ }
+    }
   }
+  // Handle final partial line
+  if (partial) lineCount++;
 
-  return { turns, gitBranch, totalLines };
+  return { turns, gitBranch, totalLines: lineCount };
 }
 
 // --- Vault Glob ---
@@ -303,18 +325,14 @@ async function handleSearch(url: URL): Promise<Response> {
 
         let uuid: string | null = null;
         let projectPath: string | null = null;
-        let resumeCommand = shortId ? `claude --resume ${shortId}` : "";
+        let resumeCommand = shortId ? buildResumeCommand(null, shortId) : "";
 
         if (shortId) {
           const resolved = await resolveUuid(shortId);
           if (resolved) {
             uuid = resolved.uuid;
             projectPath = await resolveProjectPath(resolved.projectDir);
-            if (projectPath) {
-              resumeCommand = `cd '${projectPath}' && claude --resume ${uuid}`;
-            } else {
-              resumeCommand = `claude --resume ${uuid}`;
-            }
+            resumeCommand = buildResumeCommand(projectPath, uuid);
           }
         }
 
@@ -378,12 +396,12 @@ async function handlePreview(shortId: string): Promise<Response> {
     const projPath = await resolveProjectPath(resolved.projectDir);
     if (projPath) {
       result.projectPath = projPath;
-      result.resumeCommand = `cd '${projPath}' && claude --resume ${resolved.uuid}`;
+      result.resumeCommand = buildResumeCommand(projPath, resolved.uuid);
     } else {
-      result.resumeCommand = `claude --resume ${resolved.uuid}`;
+      result.resumeCommand = buildResumeCommand(null, resolved.uuid);
     }
   } else {
-    result.resumeCommand = `claude --resume ${shortId}`;
+    result.resumeCommand = buildResumeCommand(null, shortId);
   }
 
   // Try Vault file
@@ -436,9 +454,9 @@ async function handlePreview(shortId: string): Promise<Response> {
     if (indexData.sessionId) {
       result.uuid = indexData.sessionId;
       if (result.projectPath) {
-        result.resumeCommand = `cd '${result.projectPath}' && claude --resume ${indexData.sessionId}`;
+        result.resumeCommand = buildResumeCommand(result.projectPath, indexData.sessionId);
       } else {
-        result.resumeCommand = `claude --resume ${indexData.sessionId}`;
+        result.resumeCommand = buildResumeCommand(null, indexData.sessionId);
       }
     }
     // Read conversation from .jsonl if available
@@ -491,7 +509,10 @@ const server = Bun.serve({
     }
 
     if (url.pathname.startsWith("/api/preview/") && req.method === "GET") {
-      const shortId = url.pathname.split("/api/preview/")[1];
+      const shortId = url.pathname.slice("/api/preview/".length);
+      if (!/^[0-9a-f]{8}$/.test(shortId)) {
+        return Response.json({ error: "invalid shortId" }, { status: 400 });
+      }
       return handlePreview(shortId);
     }
 

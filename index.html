@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>cresume</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -181,18 +182,22 @@
     let selectedIndex = -1;
     let currentResumeCmd = "";
     let debounceTimer = null;
-    let markedLoaded = typeof marked !== "undefined";
+    let markedLoaded = false;
 
     // Markdown rendering
     function renderMarkdown(text) {
       if (markedLoaded) {
-        try { return marked.parse(text); } catch { /* fall through */ }
+        try {
+          const html = marked.parse(text);
+          return typeof DOMPurify !== "undefined" ? DOMPurify.sanitize(html) : escapeHtml(text);
+        } catch { /* fall through */ }
       }
       return "<pre style='white-space:pre-wrap;font-family:inherit'>" + escapeHtml(text) + "</pre>";
     }
 
     function escapeHtml(s) {
-      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     }
 
     // Search
@@ -254,7 +259,7 @@
         '<div class="result-item' + (i === selectedIndex ? " selected" : "") + '" data-index="' + i + '" onclick="selectResult(' + i + ')">' +
         '<div class="result-title">' + escapeHtml(r.title || "Untitled") + '</div>' +
         '<div class="result-meta">' +
-        '<span>' + (r.date || "no date") + '</span>' +
+        '<span>' + escapeHtml(r.date || "no date") + '</span>' +
         '<span class="collection">' + escapeHtml(r.collection || "") + '</span>' +
         '<span class="score">' + (r.score ? r.score.toFixed(2) : "") + '</span>' +
         '</div></div>'
@@ -308,7 +313,7 @@
 
       // Tier badge
       const tierLabels = { full: "full", partial: "limited", index: "index only", parse_error: "parse error" };
-      html += '<span class="preview-tier ' + data.previewTier + '">' + (tierLabels[data.previewTier] || data.previewTier) + '</span>';
+      html += '<span class="preview-tier ' + escapeHtml(data.previewTier || '') + '">' + escapeHtml(tierLabels[data.previewTier] || data.previewTier || '') + '</span>';
 
       // Meta row
       html += '<div class="preview-meta-row">';
