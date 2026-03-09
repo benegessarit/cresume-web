@@ -388,6 +388,7 @@
       if (e.key === "ArrowDown") {
         e.preventDefault();
         if (results.length > 0) {
+          searchInput.blur();
           selectedIndex = Math.min(selectedIndex + 1, results.length - 1);
           renderResults();
           updateBottomBar(results[selectedIndex]);
@@ -395,6 +396,7 @@
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         if (results.length > 0) {
+          searchInput.blur();
           selectedIndex = Math.max(selectedIndex - 1, 0);
           renderResults();
           updateBottomBar(results[selectedIndex]);

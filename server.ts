@@ -389,6 +389,13 @@ async function handlePreview(shortId: string): Promise<Response> {
     return Response.json(result);
   }
 
+  // Tier 4: session file exists on disk but not in sessions-index.json
+  // resolveUuid already ran at top — if result.uuid is set, the session exists
+  if (result.uuid) {
+    result.previewTier = "index";
+    return Response.json(result);
+  }
+
   return Response.json({ error: "session not found" }, { status: 404 });
 }
 
