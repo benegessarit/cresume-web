@@ -52,7 +52,7 @@
       padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer;
       transition: background 0.1s;
     }
-    .result-item:hover { background: var(--surface); }
+    .result-item:hover:not(.selected) { background: rgba(255,255,255,0.03); }
     .result-item.selected { background: var(--surface2); border-left: 2px solid var(--amber); padding-left: 12px; }
     .result-title { color: var(--text); font-size: 13px; line-height: 1.4; margin-bottom: 4px;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
