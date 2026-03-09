@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { resolve, basename, dirname } from "path";
+import { resolve, basename } from "path";
 import { readdir, readFile, stat } from "fs/promises";
 
 const HOME = Bun.env.HOME!;
