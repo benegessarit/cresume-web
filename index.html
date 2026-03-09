@@ -341,6 +341,28 @@
         html += '<div class="preview-body">' + renderMarkdown(data.body) + '</div>';
       }
 
+      // Conversation turns (from .jsonl)
+      if (Array.isArray(data.conversation) && data.conversation.length > 0) {
+        html += '<div class="conversation">';
+        if (data.totalLines) {
+          html += '<div style="font-size:11px;color:var(--text-dim);margin-bottom:12px">Showing first ' + data.conversation.length + ' turns from ' + data.totalLines + ' lines</div>';
+        }
+        for (const turn of data.conversation) {
+          const roleColor = turn.role === 'user' ? 'var(--amber)' : 'var(--green)';
+          const roleLabel = turn.role === 'user' ? 'You' : 'Claude';
+          html += '<div class="conv-turn" style="margin-bottom:12px">';
+          html += '<div style="font-size:11px;font-weight:600;color:' + roleColor + ';margin-bottom:4px">' + roleLabel + '</div>';
+          html += '<div style="color:var(--text);line-height:1.5;padding-left:8px;border-left:2px solid ' + roleColor + '">';
+          if (turn.role === 'assistant') {
+            html += renderMarkdown(turn.text);
+          } else {
+            html += escapeHtml(turn.text);
+          }
+          html += '</div></div>';
+        }
+        html += '</div>';
+      }
+
       previewPanel.innerHTML = html;
     }
 

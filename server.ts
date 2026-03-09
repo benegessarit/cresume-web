@@ -15,7 +15,7 @@ export function extractShortId(qmdUri: string): string | null {
   return match ? match[1] : null;
 }
 
-export async function resolveUuid(shortId: string): Promise<{ uuid: string; projectDir: string } | null> {
+export async function resolveUuid(shortId: string): Promise<{ uuid: string; projectDir: string; jsonlPath: string } | null> {
   try {
     const projectDirs = await readdir(CLAUDE_PROJECTS);
     for (const dir of projectDirs) {
@@ -23,9 +23,9 @@ export async function resolveUuid(shortId: string): Promise<{ uuid: string; proj
       const projectDir = resolve(CLAUDE_PROJECTS, dir);
       const files = await readdir(projectDir).catch(() => []);
       for (const file of files) {
-        if (file.startsWith(shortId)) {
+        if (file.startsWith(shortId) && file.endsWith(".jsonl")) {
           const uuid = file.replace(/\.jsonl$/, "");
-          return { uuid, projectDir };
+          return { uuid, projectDir, jsonlPath: resolve(projectDir, file) };
         }
       }
     }
@@ -156,6 +156,50 @@ function parseValue(val: string): string | string[] {
     return val.slice(1, -1);
   }
   return val;
+}
+
+// --- JSONL Conversation Preview ---
+
+interface ConversationTurn {
+  role: "user" | "assistant";
+  text: string;
+}
+
+async function readConversationPreview(jsonlPath: string, maxLines = 300): Promise<{ turns: ConversationTurn[]; gitBranch?: string; totalLines: number }> {
+  const file = Bun.file(jsonlPath);
+  const text = await file.text();
+  const lines = text.split("\n").filter(Boolean);
+  const totalLines = lines.length;
+  const previewLines = lines.slice(0, maxLines);
+
+  const turns: ConversationTurn[] = [];
+  let gitBranch: string | undefined;
+
+  for (const line of previewLines) {
+    try {
+      const d = JSON.parse(line);
+      if (!gitBranch && d.gitBranch) gitBranch = d.gitBranch;
+
+      if (d.type === "user" || d.type === "assistant") {
+        const content = d.message?.content;
+        let text = "";
+        if (typeof content === "string") {
+          text = content;
+        } else if (Array.isArray(content)) {
+          text = content
+            .filter((b: any) => b.type === "text")
+            .map((b: any) => b.text || "")
+            .join("\n");
+        }
+        if (text.trim()) {
+          // Truncate very long messages
+          turns.push({ role: d.type, text: text.slice(0, 2000) });
+        }
+      }
+    } catch { /* skip malformed lines */ }
+  }
+
+  return { turns, gitBranch, totalLines };
 }
 
 // --- Vault Glob ---
@@ -316,6 +360,8 @@ interface PreviewResponse {
   messageCount?: number;
   uuid?: string;
   resumeCommand?: string;
+  conversation?: ConversationTurn[];
+  totalLines?: number;
 }
 
 async function handlePreview(shortId: string): Promise<Response> {
@@ -395,12 +441,33 @@ async function handlePreview(shortId: string): Promise<Response> {
         result.resumeCommand = `claude --resume ${indexData.sessionId}`;
       }
     }
+    // Read conversation from .jsonl if available
+    if (resolved?.jsonlPath) {
+      try {
+        const conv = await readConversationPreview(resolved.jsonlPath);
+        result.conversation = conv.turns;
+        result.totalLines = conv.totalLines;
+        if (!result.gitBranch && conv.gitBranch) result.gitBranch = conv.gitBranch;
+      } catch { /* .jsonl unreadable */ }
+    }
     return Response.json(result);
   }
 
   // Tier 4: session file exists on disk but not in sessions-index.json
   // resolveUuid already ran at top — if result.uuid is set, the session exists
-  if (result.uuid) {
+  if (result.uuid && resolved?.jsonlPath) {
+    result.previewTier = "index";
+    try {
+      const conv = await readConversationPreview(resolved.jsonlPath);
+      result.conversation = conv.turns;
+      result.totalLines = conv.totalLines;
+      if (conv.gitBranch) result.gitBranch = conv.gitBranch;
+      if (conv.turns.length > 0) {
+        result.firstPrompt = conv.turns[0].text.slice(0, 200);
+      }
+    } catch { /* .jsonl unreadable */ }
+    return Response.json(result);
+  } else if (result.uuid) {
     result.previewTier = "index";
     return Response.json(result);
   }
