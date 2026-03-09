@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>cresume</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0C0C0E;
+      --surface: #18181B;
+      --surface2: #1E1E22;
+      --border: #27272A;
+      --text: #E4E4E7;
+      --text-muted: #71717A;
+      --text-dim: #52525B;
+      --amber: #F59E0B;
+      --amber-dim: #92400E;
+      --green: #22C55E;
+      --red: #EF4444;
+      --blue: #3B82F6;
+      --font: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 13px; overflow: hidden; }
+
+    /* Top bar */
+    .topbar {
+      height: 48px; display: flex; align-items: center; padding: 0 16px; gap: 12px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+    }
+    .topbar-logo { color: var(--amber); font-weight: 700; font-size: 14px; white-space: nowrap; }
+    .topbar-input {
+      flex: 1; height: 32px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+      color: var(--text); font-family: var(--font); font-size: 13px; padding: 0 10px; outline: none;
+    }
+    .topbar-input:focus { border-color: var(--amber); }
+    .topbar-input::placeholder { color: var(--text-dim); }
+    .topbar-count { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+
+    /* Main layout */
+    .main { display: flex; height: calc(100vh - 48px - 44px); }
+
+    /* Results panel */
+    .results-panel {
+      width: 40%; border-right: 1px solid var(--border); overflow-y: auto;
+      scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+    }
+    .result-item {
+      padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer;
+      transition: background 0.1s;
+    }
+    .result-item:hover { background: var(--surface); }
+    .result-item.selected { background: var(--surface2); border-left: 2px solid var(--amber); padding-left: 12px; }
+    .result-title { color: var(--text); font-size: 13px; line-height: 1.4; margin-bottom: 4px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .result-meta { display: flex; gap: 10px; font-size: 11px; color: var(--text-muted); }
+    .result-meta .score { color: var(--amber); }
+    .result-meta .collection { color: var(--text-dim); }
+
+    /* Preview panel */
+    .preview-panel { flex: 1; overflow-y: auto; padding: 20px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
+    .preview-empty {
+      display: flex; align-items: center; justify-content: center; height: 100%;
+      color: var(--text-dim); font-size: 14px; flex-direction: column; gap: 8px;
+    }
+    .preview-empty kbd {
+      display: inline-block; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 3px; padding: 1px 6px; font-size: 11px; color: var(--text-muted);
+    }
+
+    .preview-header { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+    .preview-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+    .preview-tier {
+      display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 3px;
+      text-transform: uppercase; letter-spacing: 0.5px; margin-right: 8px;
+    }
+    .preview-tier.full { background: var(--amber-dim); color: var(--amber); }
+    .preview-tier.partial { background: #1E3A5F; color: var(--blue); }
+    .preview-tier.index { background: #1a1a2e; color: var(--text-muted); }
+    .preview-meta-row { display: flex; gap: 16px; font-size: 11px; color: var(--text-muted); margin-top: 6px; flex-wrap: wrap; }
+    .preview-concepts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .concept-tag {
+      font-size: 10px; padding: 2px 8px; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; color: var(--text-muted);
+    }
+
+    .preview-body { line-height: 1.6; color: var(--text); }
+    .preview-body h1, .preview-body h2, .preview-body h3 { color: var(--amber); margin: 16px 0 8px; }
+    .preview-body h1 { font-size: 18px; }
+    .preview-body h2 { font-size: 15px; }
+    .preview-body h3 { font-size: 13px; }
+    .preview-body p { margin-bottom: 10px; }
+    .preview-body ul, .preview-body ol { margin: 0 0 10px 20px; }
+    .preview-body li { margin-bottom: 4px; }
+    .preview-body code { background: var(--surface); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+    .preview-body pre { background: var(--surface); padding: 12px; border-radius: 4px; overflow-x: auto; margin-bottom: 10px; }
+    .preview-body pre code { background: none; padding: 0; }
+    .preview-body blockquote { border-left: 2px solid var(--amber); padding-left: 12px; color: var(--text-muted); margin-bottom: 10px; }
+    .preview-body a { color: var(--amber); text-decoration: none; }
+    .preview-body a:hover { text-decoration: underline; }
+
+    .preview-summary { background: var(--surface); padding: 12px; border-radius: 4px; margin-bottom: 16px; color: var(--text); line-height: 1.5; }
+
+    /* Bottom bar */
+    .bottombar {
+      height: 44px; display: flex; align-items: center; padding: 0 16px; gap: 12px;
+      background: var(--surface); border-top: 1px solid var(--border); font-size: 12px;
+    }
+    .resume-cmd {
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      color: var(--text-muted); font-family: var(--font);
+    }
+    .resume-cmd .cmd-text { color: var(--green); }
+    .copy-btn {
+      background: var(--amber-dim); color: var(--amber); border: none; padding: 4px 12px;
+      border-radius: 3px; font-family: var(--font); font-size: 11px; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .copy-btn:hover { background: var(--amber); color: var(--bg); }
+    .copy-btn.copied { background: var(--green); color: var(--bg); }
+    .hint { color: var(--text-dim); font-size: 11px; }
+
+    /* Loading skeleton */
+    .skeleton { animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.8; } }
+    .skeleton-item { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+    .skeleton-line { height: 12px; background: var(--surface2); border-radius: 3px; margin-bottom: 6px; }
+    .skeleton-line.w70 { width: 70%; }
+    .skeleton-line.w40 { width: 40%; }
+
+    /* Error state */
+    .error-msg { color: var(--red); padding: 16px; font-size: 13px; }
+
+    /* Empty state */
+    .empty-state { padding: 40px 20px; text-align: center; color: var(--text-dim); }
+    .empty-state .icon { font-size: 28px; margin-bottom: 12px; opacity: 0.5; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="topbar-logo">cresume</span>
+    <input id="search-input" class="topbar-input" type="text" placeholder="Search sessions..." autofocus>
+    <span id="result-count" class="topbar-count"></span>
+  </div>
+
+  <div class="main">
+    <div id="results-panel" class="results-panel">
+      <div class="preview-empty" style="height:100%">
+        <div style="color:var(--text-dim)">Type to search sessions</div>
+        <div style="font-size:11px;color:var(--text-dim)">
+          <kbd>↑</kbd> <kbd>↓</kbd> navigate &nbsp; <kbd>Enter</kbd> preview &nbsp; <kbd>y</kbd> copy
+        </div>
+      </div>
+    </div>
+    <div id="preview-panel" class="preview-panel">
+      <div class="preview-empty">
+        <div>Select a session to preview</div>
+        <div style="font-size:11px">
+          <kbd>Enter</kbd> to load preview
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottombar">
+    <div id="resume-cmd" class="resume-cmd">
+      <span class="hint">Select a result to see resume command</span>
+    </div>
+    <button id="copy-btn" class="copy-btn" style="display:none" onclick="copyResumeCommand()">
+      <kbd>y</kbd> copy
+    </button>
+  </div>
+
+  <script>
+    // State
+    let results = [];
+    let selectedIndex = -1;
+    let currentResumeCmd = "";
+    let debounceTimer = null;
+    let markedLoaded = typeof marked !== "undefined";
+
+    // Markdown rendering
+    function renderMarkdown(text) {
+      if (markedLoaded) {
+        try { return marked.parse(text); } catch { /* fall through */ }
+      }
+      return "<pre style='white-space:pre-wrap;font-family:inherit'>" + escapeHtml(text) + "</pre>";
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // Search
+    const searchInput = document.getElementById("search-input");
+    const resultsPanel = document.getElementById("results-panel");
+    const previewPanel = document.getElementById("preview-panel");
+    const resultCount = document.getElementById("result-count");
+    const resumeCmdEl = document.getElementById("resume-cmd");
+    const copyBtn = document.getElementById("copy-btn");
+
+    searchInput.addEventListener("input", () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => doSearch(searchInput.value), 300);
+    });
+
+    async function doSearch(query) {
+      if (!query.trim()) {
+        results = [];
+        selectedIndex = -1;
+        resultCount.textContent = "";
+        resultsPanel.innerHTML = '<div class="preview-empty" style="height:100%"><div style="color:var(--text-dim)">Type to search sessions</div></div>';
+        clearPreview();
+        clearBottomBar();
+        return;
+      }
+
+      // Show loading
+      resultsPanel.innerHTML = Array(5).fill(0).map(() =>
+        '<div class="skeleton-item skeleton"><div class="skeleton-line w70"></div><div class="skeleton-line w40"></div></div>'
+      ).join("");
+
+      try {
+        const res = await fetch("/api/search?q=" + encodeURIComponent(query) + "&n=20");
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: "request failed" }));
+          resultsPanel.innerHTML = '<div class="error-msg">Search error: ' + escapeHtml(err.error || "unknown") + '</div>';
+          return;
+        }
+        const data = await res.json();
+        results = data.results || [];
+        selectedIndex = results.length > 0 ? 0 : -1;
+        renderResults();
+        if (selectedIndex >= 0) updateBottomBar(results[0]);
+      } catch (e) {
+        resultsPanel.innerHTML = '<div class="error-msg">Network error: ' + escapeHtml(e.message) + '</div>';
+      }
+    }
+
+    function renderResults() {
+      if (results.length === 0) {
+        resultCount.textContent = "";
+        resultsPanel.innerHTML = '<div class="empty-state"><div class="icon">&#8709;</div><div>No results found</div></div>';
+        clearPreview();
+        clearBottomBar();
+        return;
+      }
+      resultCount.textContent = results.length + " result" + (results.length !== 1 ? "s" : "");
+      resultsPanel.innerHTML = results.map((r, i) =>
+        '<div class="result-item' + (i === selectedIndex ? " selected" : "") + '" data-index="' + i + '" onclick="selectResult(' + i + ')">' +
+        '<div class="result-title">' + escapeHtml(r.title || "Untitled") + '</div>' +
+        '<div class="result-meta">' +
+        '<span>' + (r.date || "no date") + '</span>' +
+        '<span class="collection">' + escapeHtml(r.collection || "") + '</span>' +
+        '<span class="score">' + (r.score ? r.score.toFixed(2) : "") + '</span>' +
+        '</div></div>'
+      ).join("");
+
+      // Scroll selected into view
+      scrollSelectedIntoView();
+    }
+
+    function scrollSelectedIntoView() {
+      const el = resultsPanel.querySelector(".result-item.selected");
+      if (el) el.scrollIntoView({ block: "nearest" });
+    }
+
+    function selectResult(index) {
+      if (index < 0 || index >= results.length) return;
+      selectedIndex = index;
+      renderResults();
+      updateBottomBar(results[index]);
+    }
+
+    // Preview
+    async function loadPreview(shortId) {
+      if (!shortId) return;
+      previewPanel.innerHTML = '<div class="skeleton" style="padding:20px"><div class="skeleton-line w70" style="height:20px;margin-bottom:12px"></div><div class="skeleton-line w40"></div><div style="margin-top:16px"><div class="skeleton-line" style="width:100%;margin-bottom:8px"></div><div class="skeleton-line" style="width:90%;margin-bottom:8px"></div><div class="skeleton-line" style="width:80%"></div></div></div>';
+
+      try {
+        const res = await fetch("/api/preview/" + shortId);
+        if (!res.ok) {
+          if (res.status === 404) {
+            previewPanel.innerHTML = '<div class="error-msg">Session not found in Vault or sessions index.</div>';
+          } else {
+            const err = await res.json().catch(() => ({}));
+            previewPanel.innerHTML = '<div class="error-msg">Preview error: ' + escapeHtml(err.error || "unknown") + '</div>';
+          }
+          return;
+        }
+        const data = await res.json();
+        renderPreview(data);
+      } catch (e) {
+        previewPanel.innerHTML = '<div class="error-msg">Network error: ' + escapeHtml(e.message) + '</div>';
+      }
+    }
+
+    function renderPreview(data) {
+      let html = '<div class="preview-header">';
+
+      // Title
+      const title = data.summary ? data.summary.split("\n")[0].slice(0, 120) : data.firstPrompt || "Session " + data.shortId;
+      html += '<div class="preview-title">' + escapeHtml(title) + '</div>';
+
+      // Tier badge
+      const tierLabels = { full: "full", partial: "limited", index: "index only", parse_error: "parse error" };
+      html += '<span class="preview-tier ' + data.previewTier + '">' + (tierLabels[data.previewTier] || data.previewTier) + '</span>';
+
+      // Meta row
+      html += '<div class="preview-meta-row">';
+      if (data.date) html += '<span>' + escapeHtml(data.date) + '</span>';
+      if (data.week) html += '<span>' + escapeHtml(data.week) + '</span>';
+      if (data.session) html += '<span>id: ' + escapeHtml(data.session) + '</span>';
+      if (data.gitBranch) html += '<span>branch: ' + escapeHtml(data.gitBranch) + '</span>';
+      if (data.messageCount) html += '<span>' + data.messageCount + ' messages</span>';
+      if (data.created) html += '<span>created: ' + escapeHtml(data.created.split("T")[0]) + '</span>';
+      html += '</div>';
+
+      // Concepts
+      if (data.concepts && data.concepts.length > 0) {
+        html += '<div class="preview-concepts">' +
+          data.concepts.map(c => '<span class="concept-tag">' + escapeHtml(c) + '</span>').join("") +
+          '</div>';
+      }
+
+      html += '</div>'; // end header
+
+      // Summary
+      if (data.summary) {
+        html += '<div class="preview-summary">' + escapeHtml(data.summary) + '</div>';
+      } else if (data.firstPrompt) {
+        html += '<div class="preview-summary" style="color:var(--text-muted)"><strong>First prompt:</strong> ' + escapeHtml(data.firstPrompt) + '</div>';
+      }
+
+      // Body
+      if (data.body) {
+        html += '<div class="preview-body">' + renderMarkdown(data.body) + '</div>';
+      }
+
+      previewPanel.innerHTML = html;
+    }
+
+    function clearPreview() {
+      previewPanel.innerHTML = '<div class="preview-empty"><div>Select a session to preview</div><div style="font-size:11px"><kbd>Enter</kbd> to load preview</div></div>';
+    }
+
+    // Bottom bar
+    function updateBottomBar(result) {
+      if (!result) { clearBottomBar(); return; }
+      currentResumeCmd = result.resumeCommand || "";
+      if (currentResumeCmd) {
+        resumeCmdEl.innerHTML = '<span class="cmd-text">' + escapeHtml(currentResumeCmd) + '</span>';
+        copyBtn.style.display = "inline-block";
+        copyBtn.textContent = "y  copy";
+        copyBtn.classList.remove("copied");
+      } else {
+        clearBottomBar();
+      }
+    }
+
+    function clearBottomBar() {
+      currentResumeCmd = "";
+      resumeCmdEl.innerHTML = '<span class="hint">Select a result to see resume command</span>';
+      copyBtn.style.display = "none";
+    }
+
+    function copyResumeCommand() {
+      if (!currentResumeCmd) return;
+      navigator.clipboard.writeText(currentResumeCmd).then(() => {
+        copyBtn.textContent = "copied!";
+        copyBtn.classList.add("copied");
+        setTimeout(() => {
+          copyBtn.textContent = "y  copy";
+          copyBtn.classList.remove("copied");
+        }, 1500);
+      });
+    }
+
+    // Keyboard navigation
+    document.addEventListener("keydown", (e) => {
+      // Don't intercept when typing in search unless arrow/enter/y
+      const inSearch = document.activeElement === searchInput;
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (results.length > 0) {
+          selectedIndex = Math.min(selectedIndex + 1, results.length - 1);
+          renderResults();
+          updateBottomBar(results[selectedIndex]);
+        }
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (results.length > 0) {
+          selectedIndex = Math.max(selectedIndex - 1, 0);
+          renderResults();
+          updateBottomBar(results[selectedIndex]);
+        }
+      } else if (e.key === "Enter" && results.length > 0 && selectedIndex >= 0) {
+        e.preventDefault();
+        const r = results[selectedIndex];
+        if (r.shortId) loadPreview(r.shortId);
+      } else if (e.key === "y" && !inSearch) {
+        e.preventDefault();
+        copyResumeCommand();
+      } else if (e.key === "Escape") {
+        searchInput.focus();
+        searchInput.select();
+      } else if (e.key === "/" && !inSearch) {
+        e.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+      }
+    });
+
+    // Check marked loaded
+    window.addEventListener("load", () => {
+      markedLoaded = typeof marked !== "undefined";
+    });
+  </script>
+</body>
+</html>
